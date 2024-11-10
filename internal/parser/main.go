@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var levels = []string{"trace", "debug", "info", "warn", "error"}
+var levels = []parser.LogLevel{"trace", "debug", "info", "warn", "error"}
 
 var (
 	n int

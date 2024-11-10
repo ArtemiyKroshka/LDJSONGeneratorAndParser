@@ -22,14 +22,14 @@ type LogEntry struct {
 	Message LogMessage `json:"-"`
 }
 
-func createWorker(lines <-chan [][]byte, results chan<- map[string]int32) {
-	localResult := make(map[string]int32)
+func createWorker(lines <-chan [][]byte, results chan<- map[LogLevel]int32) {
+	localResult := make(map[LogLevel]int32)
 
 	for bag := range lines {
 		for _, line := range bag {
 			entry := &LogEntry{}
 			if err := easyjson.Unmarshal(line, entry); err == nil {
-				localResult[string(entry.Level)]++
+				localResult[entry.Level]++
 			}
 		}
 	}
@@ -38,26 +38,30 @@ func createWorker(lines <-chan [][]byte, results chan<- map[string]int32) {
 
 func scanFile(ctx context.Context, input io.Reader, lines chan<- [][]byte) error {
 	defer close(lines)
+
+	var (
+		BUF_MAX_CAPACITY = 10 * 1024 * 1024
+		BATCH_MAX_SIZE   = 10000
+	)
+
+	buf := make([]byte, BUF_MAX_CAPACITY)
+
 	scanner := bufio.NewScanner(input)
+	scanner.Buffer(buf, BUF_MAX_CAPACITY)
 
-	maxCapacity := 10 * 1024 * 1024
-	buf := make([]byte, maxCapacity)
-	scanner.Buffer(buf, maxCapacity)
-
-	batchSize := 100000
-	batch := make([][]byte, 0, batchSize)
+	batch := make([][]byte, 0, BATCH_MAX_SIZE)
 
 	for scanner.Scan() {
 		line := make([]byte, len(scanner.Bytes()))
 		copy(line, scanner.Bytes())
 		batch = append(batch, line)
 
-		if len(batch) >= batchSize {
+		if len(batch) >= BATCH_MAX_SIZE {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			case lines <- batch:
-				batch = make([][]byte, 0, batchSize)
+				batch = make([][]byte, 0, BATCH_MAX_SIZE)
 			}
 		}
 	}
@@ -69,8 +73,8 @@ func scanFile(ctx context.Context, input io.Reader, lines chan<- [][]byte) error
 	return scanner.Err()
 }
 
-func getResult(results chan map[string]int32) map[string]int32 {
-	finalResult := make(map[string]int32)
+func getResult(results chan map[LogLevel]int32) map[LogLevel]int32 {
+	finalResult := make(map[LogLevel]int32)
 	for res := range results {
 		for level, count := range res {
 			finalResult[level] += count
@@ -79,13 +83,16 @@ func getResult(results chan map[string]int32) map[string]int32 {
 	return finalResult
 }
 
-func Parse(ctx context.Context, n int, input io.Reader) (map[string]int32, error) {
-	results := make(chan map[string]int32, n)
-	lines := make(chan [][]byte, n)
+func Parse(ctx context.Context, n int, input io.Reader) (map[LogLevel]int32, error) {
+	var (
+		results = make(chan map[LogLevel]int32, n)
+		lines   = make(chan [][]byte, n*2)
+	)
 
 	var wg sync.WaitGroup
+	wg.Add(n)
+
 	for i := 0; i < n; i++ {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			createWorker(lines, results)
