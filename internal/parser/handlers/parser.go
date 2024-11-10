@@ -22,8 +22,8 @@ type LogEntry struct {
 	Message LogMessage `json:"-"`
 }
 
-func createWorker(lines <-chan [][]byte, results chan<- map[string]int64) {
-	localResult := make(map[string]int64)
+func createWorker(lines <-chan [][]byte, results chan<- map[string]int32) {
+	localResult := make(map[string]int32)
 
 	for bag := range lines {
 		for _, line := range bag {
@@ -69,8 +69,8 @@ func scanFile(ctx context.Context, input io.Reader, lines chan<- [][]byte) error
 	return scanner.Err()
 }
 
-func getResult(results chan map[string]int64) map[string]int64 {
-	finalResult := make(map[string]int64)
+func getResult(results chan map[string]int32) map[string]int32 {
+	finalResult := make(map[string]int32)
 	for res := range results {
 		for level, count := range res {
 			finalResult[level] += count
@@ -79,8 +79,8 @@ func getResult(results chan map[string]int64) map[string]int64 {
 	return finalResult
 }
 
-func Parse(ctx context.Context, n int, input io.Reader) (map[string]int64, error) {
-	results := make(chan map[string]int64, n)
+func Parse(ctx context.Context, n int, input io.Reader) (map[string]int32, error) {
+	results := make(chan map[string]int32, n)
 	lines := make(chan [][]byte, n)
 
 	var wg sync.WaitGroup
